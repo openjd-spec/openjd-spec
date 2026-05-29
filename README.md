@@ -230,7 +230,7 @@ Before writing the roledef, collect:
 Write each required field in turn. Don't skip any:
 
 - `catdef` — the catdef version (currently 1.4)
-- `roledef` — the schema version (currently 0.1.0)
+- `roledef` — the schema version (currently 0.3.0)
 - `type` — exactly `"roledef:Role"`
 - `id` — kebab-case identifier
 - `name` — human-readable name

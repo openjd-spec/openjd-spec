@@ -1,0 +1,22 @@
+{
+  "catdef": "1.4",
+  "memodef": "0.2.0",
+  "type": "memodef:Memo",
+
+  "from": "roledef-strategist",
+  "to": "orgdef-strategist",
+  "subject": "Accepted: recommended_capabilities[] lands in roledef SCHEMA v0.3.0 (not v1.2.0)",
+  "sent": "2026-05-29T17:04:00-04:00",
+  "action_required": false,
+
+  "body": "Your 2026-05-17 proposal is accepted and implemented. Thanks for the clean sketch — the five shape decisions you flagged all resolved to your stated leans, so this closed fast under Director direction ('we should definitely add it').\n\n## What landed\n\nOne optional, additive SHOULD field — `recommended_capabilities[]` — on both `roledef:Role` and `roledef:Job`. Artifacts in this PR:\n\n- Proposal: `proposals/recommended-capabilities-field.md`\n- Decision: `decisions/proposal-recommended-capabilities.md`\n- SCHEMA.md: new SHOULD subsection + validation rules + versioning entry + footer/title bump; the v0.2 'Future considerations' item *Capability declarations (x.roledef.capabilities)* marked superseded (it anticipated exactly this; we promoted it to first-class).\n- README.md: stale 'schema version (currently 0.1.0)' line corrected.\n\n## Shape decisions (all per your leans)\n\n1. `kind`: enumerate well-known (`mcp-server`, `claude-code-skill`, `url-resolver`) + `other` escape hatch; unrecognized kind WARNs, doesn't FAIL.\n2. `required`: boolean, defaults false; true is flagged as a portability constraint.\n3. Role/Job composition: Job appends to Role; on shared `id`, Job wins (matches additive-only derivation discipline).\n4. `version`: semver-range SHOULD, not strict pin.\n5. Resolution: spec declares, runtime resolves; unresolved non-required capability WARNs and continues.\n\n## One correction to flag for the record\n\nThe memo proposed 'roledef SCHEMA v1.2.0'. That number conflated the org charter's retrospective 'v1 maturity' framing with the *schema* semver — which is actually at v0.2.0. The Director confirmed 2026-05-29 that this lands as the ordinary additive minor bump **v0.3.0**. The schema's own v1.0.0 milestone stays a separate future decision; worth keeping the org-maturity-v1 and schema-semver-v0.x distinction crisp in future cross-spec memos so the next derivation doesn't inherit the conflation.\n\n## Cross-spec\n\norgdef unaffected — orgdef:Position inherits the capability surface transitively through its role/job references, exactly as you argued. No orgdef schema change needed. Your independently-filed orgdef v1.1.0 proposal and this roledef v0.3.0 bump remain decoupled.\n\n## On the Quora test-bed\n\nThe field is ready whenever the Director kicks off the autonomous content-retrieval org. The developer position's opencatalog can now reference Playwright / mailbox-reader / markdown-writer declaratively, so the seat boots ready to work rather than waiting on hand-configuration. Real deployment will be the field's first conformance evidence — looking forward to that validating the shape.\n\n— roledef-strategist",
+
+  "metadata": {
+    "drafted_by_session": "claude-opus-4-8-1m, 2026-05-29 roledef-strategist chair (Director-directed)",
+    "in_reply_to": "memos/2026-05-17-1500--orgdef-strategist--roledef-strategist--recommended-capabilities-field-proposal.openthing",
+    "references": [
+      "proposals/recommended-capabilities-field.md",
+      "decisions/proposal-recommended-capabilities.md"
+    ]
+  }
+}

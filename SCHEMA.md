@@ -1,4 +1,4 @@
-# roledef Schema — v0.2.0
+# roledef Schema — v0.3.0
 
 This document defines the structure and validation rules for **roledefs**: portable, machine-readable specifications of AI roles, expressed as catdef-compliant `.openthing` files.
 
@@ -110,7 +110,9 @@ Most fields are common to both tiers. The differences are concentrated in metada
 | `metadata.placement` | not used | OPTIONAL/RECOMMENDED — denormalized snapshot of org-chart placement |
 | `metadata.derived_from` | OPTIONAL — Role-to-Role lineage | OPTIONAL — Job-to-Job lineage (rare; for jobs that derive from other jobs) |
 
-All other fields (`identity`, `voice`, `output_contract`, `guardrails`, `description`, `conversation_rules`, `workflow`, `reaction_style`, `design_constraints`, `examples`) apply uniformly to both tiers.
+All other fields (`identity`, `voice`, `output_contract`, `guardrails`, `description`, `conversation_rules`, `workflow`, `reaction_style`, `design_constraints`, `recommended_capabilities`, `examples`) apply uniformly to both tiers.
+
+One field has tier-specific *composition* semantics worth noting here: `recommended_capabilities` (v0.3.0) is declared on a Role and MAY be extended by a derived Job — the Job's entries append to the Role's, and on a shared capability `id` the Job's entry wins. See [`recommended_capabilities`](#recommended_capabilities-array-of-objects) below.
 
 ### Authorization-implies-access
 
@@ -170,6 +172,7 @@ Multiple roledefs can be aggregated in a `catalog.opencatalog` index, but each i
   "workflow": {...},
   "reaction_style": {...},
   "design_constraints": [...],
+  "recommended_capabilities": [...],
   "examples": [...],
   "metadata": {...},
   
@@ -459,6 +462,76 @@ Quality standards the role's outputs MUST meet. Distinct from `guardrails` (beha
   "Output 1 must specify 16:9 format."
 ]
 ```
+
+### `recommended_capabilities` (array of objects)
+
+*Introduced in v0.3.0.* The role's **capability surface** — the tools, MCP servers, and runtime skills the role brings to a seat. A runtime that instantiates a position bound to this role MAY use this field to pre-configure the seat-occupant's environment *from the artifact*, rather than relying on out-of-band setup. Applies to both `roledef:Role` and `roledef:Job`.
+
+```json
+"recommended_capabilities": [
+  {
+    "id": "playwright",
+    "kind": "claude-code-skill",
+    "reference": "playwright",
+    "version": "^1.0.0",
+    "purpose": "Drive a headless browser to retrieve and screenshot target pages.",
+    "required": false
+  },
+  {
+    "id": "openbraid",
+    "kind": "mcp-server",
+    "reference": "https://mcp.openbraid.app/<account>/<org>/<position>",
+    "version": "^0.2.0",
+    "purpose": "Read and send inter-position memos for the seat.",
+    "required": false
+  }
+]
+```
+
+Each entry has the following sub-fields:
+
+| Sub-field | Conformance | Meaning |
+|---|---|---|
+| `id` | MUST | Short kebab-case identifier for the capability, unique within the array. |
+| `kind` | MUST | One of the well-known kinds (below) or `"other"`. |
+| `reference` | MUST | How a runtime locates the capability: a URL, an MCP server reference, or a skill name. |
+| `version` | SHOULD | Semver **range** (e.g. `"^1.0.0"`), not a strict pin. |
+| `purpose` | SHOULD | One line: why this role needs the capability. |
+| `required` | OPTIONAL | Boolean; **defaults to `false`**. |
+
+#### `kind` enumeration
+
+The spec enumerates well-known kinds and provides an `"other"` escape hatch (informative enumeration, not closed-for-validity):
+
+- `mcp-server` — an MCP server the seat connects to.
+- `claude-code-skill` — a Claude Code skill resolved from the runtime's skill registry.
+- `url-resolver` — a fetchable URL the role expects to dereference.
+- `other` — anything not covered above. When `kind: "other"`, the entry SHOULD carry enough self-description (per the [extension self-description SHOULD](#extension-self-description-should)) that an unfamiliar runtime can act intelligently.
+
+An unrecognized `kind` is a SHOULD-warning, **not** a hard validation failure — preserving cross-runtime portability.
+
+#### `required` semantics (portability guard)
+
+`required: false` (the default) means degraded-mode operation is acceptable when the runtime cannot resolve the capability. `required: true` is a strong claim that the seat genuinely cannot function without the capability — and it **constrains cross-runtime portability**, because a runtime lacking it cannot host the role. Roles SHOULD default to graceful degradation; `required: true` SHOULD be reserved for genuine hard dependencies and SHOULD carry a `purpose` explaining the dependency.
+
+#### Role/Job composition
+
+When a `roledef:Job` derives from a `roledef:Role` and both declare `recommended_capabilities[]`:
+
+- The Job's array **appends to** the Role's (it does not replace it).
+- If the same capability `id` appears in both, the **Job's entry wins** (the Job specialization overrides the Role's declaration for that id).
+
+This matches the additive-only derivation discipline established for `guardrails` and `output_contract`.
+
+#### Resolution (spec declares; runtime resolves)
+
+The spec defines the field's shape and semantics; **runtimes resolve** the references. A Claude Code runtime resolves `kind: claude-code-skill` against its skill registry; an MCP-capable runtime resolves `kind: mcp-server` to MCP server configuration. A runtime that does not recognize a `kind`, or cannot resolve a non-`required` capability, **SHOULD log a warning and continue — never fail** (reader-lenient, per CA-003).
+
+#### Versioning of capability references
+
+Capability `version` references SHOULD use semver **ranges** (`"^1.0.0"`) rather than strict pins (`"1.0.0"`). Strict pinning couples the role's version to the capability's patch cadence and is brittle; a range lets a capability patch-update without forcing a roledef bump.
+
+`recommended_capabilities` is OPTIONAL on both tiers. A roledef that uses it MUST stamp `"roledef": "0.3.0"` or higher (writer-strict per CA-002).
 
 ### `examples` (array of objects)
 
@@ -782,6 +855,16 @@ The following namespaces are reserved by the roledef spec and MUST NOT be used a
 4. Include `workflow` if the role has procedural structure
 5. Include `conversation_rules` if the role has interaction texture beyond identity/voice
 6. Use polymorphic translatable shapes for `name` and `description` if i18n is intended
+7. Include `recommended_capabilities` if the role depends on tools, MCP servers, or runtime skills to do its work
+
+### When `recommended_capabilities` is present, each entry
+
+1. MUST include `id`, `kind`, and `reference`
+2. MUST use an `id` that is unique within the array
+3. SHOULD use a `kind` from the well-known enumeration (`mcp-server`, `claude-code-skill`, `url-resolver`) or `"other"`; an unrecognized `kind` is a WARN, not a FAIL
+4. SHOULD use a semver-range `version` and a one-line `purpose`
+5. SHOULD self-describe (per the extension self-description SHOULD) when `kind: "other"`
+6. SHOULD default `required` to false; `required: true` SHOULD carry a `purpose` justifying the hard dependency
 
 ### A `roledef:Job` SHOULD additionally
 
@@ -816,7 +899,7 @@ Per the strict-writer / lenient-reader pattern (CA-002, CA-003):
 The roledef schema follows semantic versioning, mirroring catdef's pattern:
 
 - **Patch** (0.x.y): documentation clarifications, no schema changes
-- **Minor** (0.y.0): new optional fields, new field types, new SHOULD-rules, new artifact tiers (e.g., the `roledef:Job` type added in 0.2.0). Old roledefs remain valid; old runtimes gracefully ignore new fields.
+- **Minor** (0.y.0): new optional fields, new field types, new SHOULD-rules, new artifact tiers (e.g., the `roledef:Job` type added in 0.2.0; the `recommended_capabilities[]` field added in 0.3.0). Old roledefs remain valid; old runtimes gracefully ignore new fields.
 - **Major** (x.0.0): breaking changes to required fields or semantics. Runtimes MUST refuse to process roledefs with a higher major version than they support.
 
 The `roledef` version stamp on each roledef MUST declare the minimum schema version that defines every feature used (writer-strict per CA-002). A `roledef:Role` artifact that uses no v0.2.0-specific features MAY stamp `"roledef": "0.1.0"`. A `roledef:Job` artifact MUST stamp `"roledef": "0.2.0"` or higher (since the Job type itself is a v0.2.0 feature).
@@ -837,18 +920,18 @@ See [`roledefs/roledef-contributor.openthing`](roledefs/roledef-contributor.open
 
 ## Future considerations
 
-The following are not part of v0.2 but are anticipated for future schema versions:
+The following are not part of v0.3 but are anticipated for future schema versions:
 
 - **Heavyweight roledef inheritance** (`extends` with runtime-merged semantics): allow a roledef to declare a parent and have the runtime fetch + merge fields per defined override rules. The lightweight git-fork-plus-`derived_from` pattern (above, in `metadata`) plus OPD-based behavioral drift management (above, in OPD section) covers v0.2 derivation needs without requiring runtime merge complexity. `extends` is reserved as a future-considerations field if real use cases emerge that the lightweight + OPD pattern can't handle.
 - **Runtime hints** (`x.roledef.runtime_hints`): per-runtime advice for instantiation (e.g., temperature, system-prompt placement, role-priming patterns specific to Claude vs Grok vs GPT).
 - **Turing test fixtures** (`x.roledef.turing_test`): standardized test scenarios paired with each roledef, enabling automated cross-runtime validation.
 - **Composition** (`x.roledef.composes`): a roledef that combines multiple other roledefs (e.g., a "Full-Stack Engineer" roledef that composes "Frontend Developer" + "Backend Developer" + "DevOps").
-- **Capability declarations** (`x.roledef.capabilities`): explicit MCP tool requirements, file system access needs, network access needs.
+- ~~**Capability declarations** (`x.roledef.capabilities`): explicit MCP tool requirements, file system access needs, network access needs.~~ **Superseded by v0.3.0** — promoted from an anticipated extension to the first-class [`recommended_capabilities[]`](#recommended_capabilities-array-of-objects) field on Role and Job.
 - **Multi-parent OPD** (multi-valued `metadata.derived_from`): if and when a role can derive from multiple parents, OPD iterates trivially. v0.2 OPD assumes single parent.
 - **`peer_to` in `metadata.placement`**: identified in the v0.2 placement design as deferred; promote to first-class sub-field if real demand surfaces from operational corpus. v0.2 uses `coordinates_with` as the escape hatch for peer relationships.
 - **memodef:OPDReviewMemo subtype**: OPD output is currently formed as a memodef:Memo (or x.memo.* form on a catdef:Thing). If the OPD-review-memo pattern stabilizes, memodef-spec MAY define a dedicated subtype.
 
-These belong to v0.3+ and will be triaged as roledef matures.
+These belong to v0.4+ and will be triaged as roledef matures.
 
 ---
 
@@ -864,5 +947,5 @@ A roledef is therefore not just a prompt. It is a **portable, governed, role spe
 
 ---
 
-*roledef Schema v0.2.0. April 2026.*  
+*roledef Schema v0.3.0. May 2026.*  
 *An open standard for AI roledefs. Licensed under MIT.*
